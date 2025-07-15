@@ -1,0 +1,25 @@
+# 필수 기본 라이브러리
+pandas
+nltk
+beautifulsoup4
+spacy
+tqdm
+openpyxl
+python-dotenv
+fastapi
+uvicorn
+
+# SEC 다운로드 관련
+sec-edgar-downloader
+
+# huggingface
+transformers
+torch
+
+# LangChain
+langchain
+langchain-openai
+tiktoken
+
+# 기타
+pydantic
