@@ -24,13 +24,13 @@ tiktoken
 # 기타
 pydantic
 
-#크롤링
+# 크롤링
 requests
 lxml[html_clean]
 newspaper3k
 yfinance
 
-#python -m venv venv
-#.\venv\Scripts\activate
-#pip install -r requirements.txt
-#uvicorn main:app --reload
+# 추가 필요 패키지 (SEC 8-K 분석기용)
+html5lib>=1.1
+lxml_html_clean>=0.1.0
+charset-normalizer>=3.0.0

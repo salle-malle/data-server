@@ -33,20 +33,29 @@ async def analyze_8k_endpoint(req: AnalysisRequest):
     """
     8-K 공시 분석 API (비용 최적화)
     """
-    try:
+    if any(char.isdigit() for char in req.ticker):
+        logger.warning(f"숫자 포함된 티커 입력됨: {req.ticker} → 분석 생략")
+
+        # 분석 대신 빈 응답 반환
+        return AnalysisResponse(
+            ticker=req.ticker.upper(),
+            total_filings=0,
+            results=[],
+            total_cost_usd=0.0,
+            status="skipped (숫자 포함된 티커)"
+        )
+    try: 
         logger.info(f"분석 시작: {req.ticker}")
         
         # 8-K 공시 다운로드
         docs = fetch_recent_8k_filings(
             ticker=req.ticker,
-            max_files=req.max_files,
-            days_back=req.days_back
+             days_back=req.days_back
         )
         
         if not docs:
             raise HTTPException(
                 status_code=404,
-                status="no_filings",
                 detail=f"{req.ticker}의 최근 {req.days_back}일 간 8-K 공시를 찾을 수 없습니다."
             )
         
