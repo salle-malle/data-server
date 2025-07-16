@@ -23,3 +23,14 @@ tiktoken
 
 # 기타
 pydantic
+
+#크롤링
+requests
+lxml[html_clean]
+newspaper3k
+yfinance
+
+#python -m venv venv
+#.\venv\Scripts\activate
+#pip install -r requirements.txt
+#uvicorn main:app --reload

@@ -4,6 +4,8 @@ from edgar import fetch_recent_8k_filings
 from analyzer import analyze_8k
 import logging
 from typing import List, Dict, Any
+from schemas import CrawlingRequest, CrawlingResponse
+from services import crawl_and_process_news
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -92,6 +94,24 @@ async def cost_info():
         "estimated_cost_per_request": "$0.005-0.015",
         "optimization": "청크 크기 최적화, 중요 섹션만 추출, 문서당 최대 3개 청크"
     }
+    
+@app.post("/crawl-news", response_model=CrawlingResponse) 
+async def crawl_stock_news(req: CrawlingRequest):
+    """
+    티커 목록을 받아 각 주식의 최신 뉴스 제목과 본문을 크롤링합니다.
+
+    - **tickers**: 크롤링할 주식 티커(심볼) 목록 (예: ["AAPL", "GOOGL"])
+    """
+    logger.info(f"크롤링 요청 수신: {req.tickers}")
+    
+    # 실제 크롤링 로직은 service 함수에 위임합니다.
+    results = crawl_and_process_news(req.tickers)
+    
+    if not results:
+        raise HTTPException(status_code=404, detail="요청된 모든 티커의 뉴스를 가져올 수 없습니다.")
+
+    logger.info(f"크롤링 요청 처리 완료.")
+    return CrawlingResponse(crawl_results=results)
 
 if __name__ == "__main__":
     import uvicorn
