@@ -13,11 +13,11 @@ class NewsArticle(BaseModel):
     """
     개별 뉴스 기사 정보를 담는 모델
     """
-    title: str
-    link: str
-    text: str
+    news_title: str
+    source_uri: str
+    news_content: str
     date: Optional[str] = None # str | None 과 동일
-
+    
 class CrawlingResponse(BaseModel):
     """
     크롤링 결과 응답을 위한 모델
