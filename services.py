@@ -46,10 +46,10 @@ def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArticle]]:
                     article.parse()
 
                     crawled_articles.append(NewsArticle(
-                        news_title=article.title,
-                        source_uri=url,
-                        news_content=article.text,
-                        date=date_kst  # 변환된 문자열 날짜를 저장
+                        newsTitle=article.title,
+                        newsUri=url,
+                        newsContent=article.text,
+                        newsDate=date_kst  # 변환된 문자열 날짜를 저장
                     ))
                     # logger.info({article.publish_date})
                     logger.info(f"  - 성공: {article.title}")
