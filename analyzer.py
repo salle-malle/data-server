@@ -1,5 +1,5 @@
 import json, logging, re, time
-from datetime import datetime
+from datetime import datetime, date
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, max_tokens=1200)
 enc = tiktoken.encoding_for_model("gpt-4o-mini")
 
-# 📌 개선된 프롬프트 - 투자자 관점과 상세 맥락 추가
+# 개선된 프롬프트 - 투자자 관점과 상세 맥락 추가
 prompt = ChatPromptTemplate.from_template("""
 당신은 SEC 8-K 공시를 분석하는 **금융 애널리스트**입니다. 
 투자자와 비즈니스 전문가가 이해하기 쉽도록 **맥락과 함의를 포함한 상세 분석**을 제공하세요.
@@ -29,33 +29,11 @@ prompt = ChatPromptTemplate.from_template("""
 {{
   "title": "공시 핵심 내용을 반영한 구체적인 한국어 제목 (50자 이내)",
   "narrative": "공시 내용을 스토리텔링 방식으로 설명한 2-3개 단락 (각 단락 4-5문장, 연결어 사용으로 흐름 유지)",
-  "investor_insights": [
-    "투자자 관점에서 주목할 점 3가지 (각 25자 이내)",
-    "실제 투자 결정에 도움이 되는 구체적 정보"
-  ],
-  "financial_impact": {{
-    "impact_type": "positive/neutral/negative",
-    "description": "재무적 영향에 대한 구체적 설명 (1-2문장)",
-    "timeline": "영향이 나타날 예상 시기"
-  }},
-  "key_figures": [
-    "문서에 언급된 중요 수치나 날짜 정보"
-  ],
-  "main_events": [
-    {{
-      "event_type": "사건 유형",
-      "description": "사건의 배경과 의미를 포함한 상세 설명",
-      "business_impact": "비즈니스에 미치는 영향",
-      "importance": 1-10
-    }}
-  ],
-  "tone": "positive/neutral/negative",
   "filing_date": "{filing_date}"
 }}
 
 중요 지침:
 - narrative는 **연결어와 맥락**을 사용해 스토리처럼 서술
-- investor_insights는 **실용적이고 행동 지향적**으로 작성
 - 단순 번역이 아닌 **비즈니스 맥락과 함의** 포함
 - 수치나 날짜는 정확히 인용, 추측 금지
 - 모든 내용은 자연스러운 한국어로 작성
@@ -117,9 +95,194 @@ def extract_financial_numbers(text: str) -> list[str]:
     
     return list(set(numbers))  # 중복 제거
 
-# 4. 개선된 Smart8KExtractor -----------------------------------------------
+class EnhancedDateExtractor:
+    def __init__(self, default_date: str = None):
+        """
+        Args:
+            default_date: 날짜 추출 실패 시 사용할 기본 날짜 (YYYY-MM-DD 형식)
+                         None이면 오늘 날짜 사용
+        """
+        self.default_date = default_date or date.today().strftime("%Y-%m-%d")
+        
+        # SEC 8-K 특화 날짜 패턴 (우선순위 순)
+        self.date_patterns = [
+            # 1. SEC 헤더 형식
+            r"(?i)date\s+of\s+report\s*[:\(]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+            r"(?i)date\s+of\s+earliest\s+event\s+reported\s*[:\(]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+            r"(?i)filing\s+date\s*[:\(]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
+            
+            # 2. 표준 날짜 형식
+            r"(\d{4}-\d{2}-\d{2})",                    # 2025-01-15
+            r"(\d{1,2}/\d{1,2}/\d{4})",                # 1/15/2025
+            r"(\d{1,2}-\d{1,2}-\d{4})",                # 1-15-2025
+            
+            # 3. 괄호 안의 날짜
+            r"\((\w+\s+\d{1,2},?\s+\d{4})\)",          # (January 15, 2025)
+            r"\((\d{1,2}/\d{1,2}/\d{4})\)",            # (1/15/2025)
+            r"\((\d{4}-\d{2}-\d{2})\)",                # (2025-01-15)
+            
+            # 4. 문맥상 날짜
+            r"(?i)(?:on|dated?|as\s+of|effective)\s+(\w+\s+\d{1,2},?\s+\d{4})",
+            r"(?i)(?:on|dated?|as\s+of|effective)\s+(\d{1,2}/\d{1,2}/\d{4})",
+            
+            # 5. 8-K 특화 패턴
+            r"(?i)current\s+report\s+.*?(\w+\s+\d{1,2},?\s+\d{4})",
+            r"(?i)form\s+8-k\s+.*?(\w+\s+\d{1,2},?\s+\d{4})",
+        ]
+        
+        # 날짜 형식 패턴 (파싱용)
+        self.date_formats = [
+            "%B %d, %Y",     # January 15, 2025
+            "%b %d, %Y",     # Jan 15, 2025
+            "%B %d %Y",      # January 15 2025
+            "%b %d %Y",      # Jan 15 2025
+            "%Y-%m-%d",      # 2025-01-15
+            "%m/%d/%Y",      # 1/15/2025
+            "%m-%d-%Y",      # 1-15-2025
+            "%d/%m/%Y",      # 15/1/2025
+            "%d-%m-%Y",      # 15-1-2025
+        ]
+    
+    def extract_date_from_html(self, raw_html: str) -> str:
+        """HTML에서 날짜 추출 (다중 전략)"""
+        
+        # 전략 1: HTML 메타데이터에서 추출
+        soup = BeautifulSoup(raw_html, "html.parser")
+        
+        # SEC-HEADER에서 날짜 찾기
+        header_date = self._extract_from_sec_header(soup)
+        if header_date:
+            return header_date
+        
+        # 전략 2: 텍스트에서 정규식 패턴 매칭
+        plain_text = soup.get_text(" ")
+        
+        # 상위 2000자에서 우선 검색 (헤더 부분)
+        header_text = plain_text[:2000]
+        date_found = self._extract_with_patterns(header_text)
+        if date_found:
+            return date_found
+        
+        # 전체 텍스트에서 검색 (헤더에서 찾지 못한 경우)
+        date_found = self._extract_with_patterns(plain_text)
+        if date_found:
+            return date_found
+        
+        # 전략 3: 특정 HTML 태그에서 추출
+        date_found = self._extract_from_html_tags(soup)
+        if date_found:
+            return date_found
+        
+        # 전략 4: 기본값 반환
+        logger.warning("날짜 추출 실패, 기본값 사용: %s", self.default_date)
+        return self.default_date
+    
+    def _extract_from_sec_header(self, soup: BeautifulSoup) -> str:
+        """SEC-HEADER에서 날짜 추출"""
+        # SEC-HEADER 섹션 찾기
+        header_patterns = [
+            r"<SEC-HEADER>.*?</SEC-HEADER>",
+            r"SEC-HEADER.*?(?=<|$)",
+            r"CONFORMED\s+PERIOD\s+OF\s+REPORT[:\s]+(\d{8})",
+            r"FILED\s+AS\s+OF\s+DATE[:\s]+(\d{8})",
+        ]
+        
+        text = str(soup)
+        for pattern in header_patterns:
+            matches = re.findall(pattern, text, re.DOTALL | re.IGNORECASE)
+            if matches:
+                for match in matches:
+                    # 8자리 숫자 날짜 형식 (YYYYMMDD)
+                    if isinstance(match, str) and match.isdigit() and len(match) == 8:
+                        return self._format_date(match, "%Y%m%d")
+                    
+                    # 일반 날짜 패턴 검색
+                    date_found = self._extract_with_patterns(match)
+                    if date_found:
+                        return date_found
+        
+        return None
+    
+    def _extract_with_patterns(self, text: str) -> str:
+        """정규식 패턴으로 날짜 추출"""
+        for pattern in self.date_patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            if matches:
+                for match in matches:
+                    formatted_date = self._format_date(match.strip())
+                    if formatted_date:
+                        return formatted_date
+        return None
+    
+    def _extract_from_html_tags(self, soup: BeautifulSoup) -> str:
+        """HTML 태그에서 날짜 추출"""
+        # 날짜 관련 태그들 검색
+        date_tags = ['time', 'date', 'span', 'div', 'p']
+        date_attrs = ['datetime', 'date', 'data-date']
+        
+        for tag_name in date_tags:
+            for tag in soup.find_all(tag_name):
+                # 속성에서 날짜 찾기
+                for attr in date_attrs:
+                    if tag.get(attr):
+                        formatted_date = self._format_date(tag.get(attr))
+                        if formatted_date:
+                            return formatted_date
+                
+                # 태그 내용에서 날짜 찾기
+                if tag.string:
+                    formatted_date = self._format_date(tag.string.strip())
+                    if formatted_date:
+                        return formatted_date
+        
+        return None
+    
+    def _format_date(self, date_str: str, known_format: str = None) -> str:
+        """날짜 문자열을 YYYY-MM-DD 형식으로 변환"""
+        if not date_str:
+            return None
+        
+        date_str = date_str.strip()
+        
+        # 알려진 형식이 있으면 직접 파싱
+        if known_format:
+            try:
+                return datetime.strptime(date_str, known_format).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        
+        # 8자리 숫자 (YYYYMMDD) 처리
+        if date_str.isdigit() and len(date_str) == 8:
+            try:
+                return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+            except:
+                pass
+        
+        # 다양한 형식으로 시도
+        for fmt in self.date_formats:
+            try:
+                parsed_date = datetime.strptime(date_str, fmt)
+                # 미래 날짜 체크 (너무 미래면 제외)
+                if parsed_date.year > datetime.now().year + 5:
+                    continue
+                # 너무 과거 날짜 체크 (1990년 이전이면 제외)
+                if parsed_date.year < 1990:
+                    continue
+                return parsed_date.strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+        
+        return None
+
+# 5. 개선된 Smart8KExtractor -----------------------------------------------
 class Smart8KExtractor:
-    def __init__(self):
+    def __init__(self, default_date: str = None):
+        """
+        Args:
+            default_date: 날짜 추출 실패 시 기본값 (YYYY-MM-DD)
+        """
+        self.date_extractor = EnhancedDateExtractor(default_date)
+        
         self.item_patterns = {
             "ITEM_1_01": {
                 "pattern": build_flexible_item_pattern(1, 1),
@@ -183,15 +346,6 @@ class Smart8KExtractor:
             }
         }
 
-        self.date_patterns = [
-            r"(?i)date\s+of\s+report[:\(]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
-            r"(?i)filing\s+date[:\(]?\s*(\w+\s+\d{1,2},?\s+\d{4})",
-            r"\((\w+\s+\d{1,2},?\s+\d{4})\)",
-            r"(\d{4}-\d{2}-\d{2})",
-            r"(\d{1,2}/\d{1,2}/\d{4})",
-            r"(?i)(?:on|dated?|as of)\s+(\w+\s+\d{1,2},?\s+\d{4})"
-        ]
-
     def smart_filter(self, raw_html: str) -> dict:
         soup = BeautifulSoup(raw_html, "html.parser")
         
@@ -201,7 +355,7 @@ class Smart8KExtractor:
         
         full_text = soup.get_text(separator=" ")
         
-        # 📌 테이블 정보 - 더 포괄적으로 수집
+        # 테이블 정보 - 더 포괄적으로 수집
         tables = []
         for tbl in soup.find_all("table"):
             txt = tbl.get_text(" ", strip=True)
@@ -226,39 +380,11 @@ class Smart8KExtractor:
         }
 
     def extract_filing_date(self, raw_html: str) -> str:
-        plain = BeautifulSoup(raw_html, "html.parser").get_text(" ")
-        head = plain[:2000]
-        
-        for p in self.date_patterns:
-            m = re.findall(p, head)
-            if m:
-                if date := self.normalize_date(m[0]):
-                    return date
-        
-        # 전체 텍스트에서 재검색
-        for p in self.date_patterns:
-            m = re.findall(p, plain)
-            if m:
-                if date := self.normalize_date(m[0]):
-                    return date
-        
-        return "날짜 정보 없음"
-
-    def normalize_date(self, s: str) -> str | None:
-        fmts = ["%B %d, %Y", "%b %d, %Y", "%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y"]
-        for f in fmts:
-            try:
-                return datetime.strptime(s.strip(), f).strftime("%Y-%m-%d")
-            except ValueError:
-                continue
-        
-        if s.isdigit() and len(s) == 8:
-            return f"{s[:4]}-{s[4:6]}-{s[6:]}"
-        
-        return None
+        """강화된 날짜 추출"""
+        return self.date_extractor.extract_date_from_html(raw_html)
 
     def extract_important_content(self, text: str) -> str:
-        """📌 더 풍부한 맥락 정보를 추출"""
+        """더 풍부한 맥락 정보를 추출"""
         important_parts = []
         
         # 1) Item 패턴 매칭 - 더 긴 블록 허용
@@ -306,18 +432,50 @@ class Smart8KExtractor:
         # 4) 통합 및 토큰 제한
         combined = "\n\n".join(important_parts[:15])  # 15개 섹션으로 증가
         
-        # 📌 토큰 수 제한을 4500으로 증가
+        # 토큰 수 제한을 4500으로 증가
         if len(enc.encode(combined)) > 4500:
             combined = combined[:12000]  # 문자 수 제한도 증가
         
         return combined
 
-# 5. 개선된 분석 함수 ------------------------------------------------------
-def analyze_8k(docs: list[str], max_cost: float = 8.0) -> list[dict]:  # 예산 증가
+# 6. 간소화 함수 ----------------------------------------------------------
+def simplify_8k_results(results):
+    """
+    analyze_8k 함수의 결과에서 title, narrative, filing_date만 추출
+    """
+    simplified = []
+    
+    for result in results:
+        simplified_item = {
+            "title": result.get("title", "제목 없음"),
+            "narrative": result.get("narrative", "내용 없음"),
+            "filing_date": result.get("filing_date", "날짜 정보 없음")
+        }
+        simplified.append(simplified_item)
+    
+    return simplified
+
+# 7. 📌 강화된 분석 함수 (날짜 보장) ----------------------------------------
+def analyze_8k(docs: list[str], max_cost: float = 8.0, default_date: str = None) -> list[dict]:
+    """
+    SEC 8-K 문서 분석 (날짜 추출 강화)
+    
+    Args:
+        docs: 분석할 문서 리스트
+        max_cost: 최대 비용 한도
+        default_date: 날짜 추출 실패 시 기본값 (YYYY-MM-DD)
+    
+    Returns:
+        간소화된 분석 결과 리스트
+    """
     if not docs:
         return []
 
-    extractor = Smart8KExtractor()
+    # 기본값 설정 (오늘 날짜)
+    if default_date is None:
+        default_date = date.today().strftime("%Y-%m-%d")
+
+    extractor = Smart8KExtractor(default_date)
     results, total_cost = [], 0.0
 
     for idx, raw in enumerate(docs):
@@ -330,10 +488,18 @@ def analyze_8k(docs: list[str], max_cost: float = 8.0) -> list[dict]:  # 예산 
             logger.warning("예산 초과 예상, 문서 %s 스킵", idx + 1)
             continue
 
+        # 📌 강화된 날짜 추출
         filing_date = extractor.extract_filing_date(raw)
+        logger.info("추출된 날짜: %s", filing_date)
+        
+        # 날짜 형식 검증 (YYYY-MM-DD)
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', filing_date):
+            logger.warning("날짜 형식 불일치, 기본값 사용: %s", default_date)
+            filing_date = default_date
+        
         filtered = extractor.smart_filter(raw)
         
-        # 📌 더 풍부한 컨텍스트 추출
+        # 더 풍부한 컨텍스트 추출
         important_content = extractor.extract_important_content(filtered["full_text"])
         
         # 테이블 정보 추가 (더 많은 정보)
@@ -385,13 +551,15 @@ def analyze_8k(docs: list[str], max_cost: float = 8.0) -> list[dict]:  # 예산 
 
         try:
             record = json.loads(response)
+            record_date = record.get("filing_date", filing_date)
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', record_date):
+                record["filing_date"] = filing_date
+                logger.info("응답 날짜 형식 보정: %s", filing_date)
             
-            # 📌 추가 메타데이터 보강
             record.update({
                 "document_index": idx + 1,
-                "filing_date": filing_date,
                 "processed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "analysis_version": "v4_enhanced",  # 버전 정보 추가
+                "analysis_version": "v4_enhanced_date",  # 버전 정보 추가
                 "content_length": len(important_content)
             })
             
@@ -414,27 +582,26 @@ def analyze_8k(docs: list[str], max_cost: float = 8.0) -> list[dict]:  # 예산 
 
     logger.info("분석 완료: %s건, 총 비용 $%.4f", len(results), total_cost)
 
-    # 📌 개선된 빈 결과 처리
+    # 📌 개선된 빈 결과 처리 (날짜 보장)
     if not results:
         return [{
             "title": "분석 가능한 중요 공시 내용 없음",
             "narrative": "제공된 문서에서 투자자나 비즈니스 관점에서 중요한 정보를 찾을 수 없었습니다. 문서 형식이나 내용에 문제가 있거나, 중요도가 낮은 기술적 공시일 가능성이 있습니다.",
-            "investor_insights": [
-                "추가 정보 필요",
-                "다른 공시 문서 검토 권장",
-                "원문 직접 확인 필요"
-            ],
-            "financial_impact": {
-                "impact_type": "neutral",
-                "description": "명확한 재무적 영향 없음",
-                "timeline": "해당 없음"
-            },
-            "key_figures": [],
-            "main_events": [],
-            "tone": "neutral",
-            "filing_date": "날짜 정보 없음",
-            "document_index": 0,
-            "analysis_version": "v4_enhanced"
+            "filing_date": default_date
         }]
 
-    return results
+    return simplify_8k_results(results)
+
+# 8. 사용 예시 -------------------------------------------------------------
+if __name__ == "__main__":
+    # 예시 사용법
+    docs = ["문서1 내용", "문서2 내용", "문서3 내용"]
+    default_date = "None"
+    results = analyze_8k(docs, default_date=default_date)
+    
+    # 결과 출력
+    for result in results:
+        print(f"제목: {result['title']}")
+        print(f"내용: {result['narrative']}")
+        print(f"날짜: {result['filing_date']}")  # 무조건 YYYY-MM-DD 형식
+        print("-" * 50)
