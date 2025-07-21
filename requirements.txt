@@ -34,3 +34,9 @@ yfinance
 html5lib>=1.1
 lxml_html_clean>=0.1.0
 charset-normalizer>=3.0.0
+
+
+#python -m venv venv
+#.\venv\Scripts\activate
+#pip install -r requirements.txt
+#uvicorn main:app --reload

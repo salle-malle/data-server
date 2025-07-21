@@ -1,13 +1,12 @@
-import os
 import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any
+from services import crawl_and_process_news, crawl_yahoo_stock_market_news
 
 from edgar import fetch_recent_8k_filings
 from analyzer import analyze_8k
 from schemas import CrawlingRequest, CrawlingResponse
-from services import crawl_and_process_news
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -74,6 +73,12 @@ async def crawl_stock_news(req: CrawlingRequest):
         raise HTTPException(status_code=404, detail="뉴스를 가져올 수 없습니다.")
     return CrawlingResponse(crawl_results=results)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/market/crawl_news", response_model=CrawlingResponse)
+async def crawl_market_crawl_news():
+    results = crawl_yahoo_stock_market_news()
+    print(results)
+    if not results:
+        raise HTTPException(status_code=404, detail="미국 증시 뉴스를 가져올 수 없습니다.")
+    
+    return CrawlingResponse(crawl_results=results)
