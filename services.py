@@ -36,6 +36,7 @@ def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArticle]]:
             for news_item in news_list[:5]:
                 try:
                     url = news_item['content']['canonicalUrl']['url']
+                    image = news_item['content']['thumbnail']['originalUrl']
                     pub_date = news_item['content']['pubDate']
                     utc_time = datetime.datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                     kst_zone = zoneinfo.ZoneInfo("Asia/Seoul")
@@ -49,6 +50,7 @@ def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArticle]]:
                         newsTitle=article.title,
                         newsUri=url,
                         newsContent=article.text,
+                        newsImage=image,
                         newsDate=date_kst  # 변환된 문자열 날짜를 저장
                     ))
                     # logger.info({article.publish_date})
