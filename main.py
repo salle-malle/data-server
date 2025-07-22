@@ -1,25 +1,22 @@
+import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import List, Dict, Any
+from services import crawl_and_process_news, crawl_yahoo_stock_market_news
+
 from edgar import fetch_recent_8k_filings
 from analyzer import analyze_8k
-import logging
-from typing import List, Dict, Any
 from schemas import CrawlingRequest, CrawlingResponse
-from services import crawl_and_process_news
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="SEC 8-K LLM 분석기",
-    description="SEC 8-K 공시를 자동으로 수집하고 한국어로 요약하는 API (비용 최적화)",
-    version="2.0.0"
-)
+app = FastAPI(title="SEC 8-K 분석기", version="2.0.0")
 
 class AnalysisRequest(BaseModel):
     ticker: str
-    max_files: int = 3      # 비용 절약을 위해 기본값 3개
-    days_back: int = 30     # 30일로 확장
+    start_date: str = None
+    end_date: str = None
 
 class AnalysisResponse(BaseModel):
     ticker: str
@@ -30,89 +27,58 @@ class AnalysisResponse(BaseModel):
 
 @app.post("/analyze-8k", response_model=AnalysisResponse)
 async def analyze_8k_endpoint(req: AnalysisRequest):
-    """
-    8-K 공시 분석 API (비용 최적화)
-    """
-    try:
-        logger.info(f"분석 시작: {req.ticker}")
-        
-        # 8-K 공시 다운로드
-        docs = fetch_recent_8k_filings(
-            ticker=req.ticker,
-            max_files=req.max_files,
-            days_back=req.days_back
-        )
-        
-        if not docs:
-            raise HTTPException(
-                status_code=404,
-                status="no_filings",
-                detail=f"{req.ticker}의 최근 {req.days_back}일 간 8-K 공시를 찾을 수 없습니다."
-            )
-        
-        # LLM 분석 수행
-        analysis_results = analyze_8k(docs)
-        
-        # 총 비용 계산
-        total_cost = sum(result.get("_meta", {}).get("cost_usd", 0) for result in analysis_results)
-        
-        # 메타데이터 제거 (사용자에게는 숨김)
-        clean_results = []
-        for result in analysis_results:
-            clean_result = {k: v for k, v in result.items() if k != "_meta"}
-            clean_results.append(clean_result)
-        
-        response = AnalysisResponse(
+    if any(c.isdigit() for c in req.ticker):
+        return AnalysisResponse(
             ticker=req.ticker.upper(),
+            total_filings=0,
+            results=[],
+            total_cost_usd=0.0,
+            status="skipped"
+        )
+
+    ticker = req.ticker.upper()
+    try:
+        docs = fetch_recent_8k_filings(ticker, req.start_date, req.end_date)
+        if not docs:
+            return AnalysisResponse(
+                ticker=ticker,
+                total_filings=0,
+                results=[],
+                total_cost_usd=0.0,
+                status="no filings found"
+            )
+
+        analysis_results = analyze_8k(docs)
+        total_cost = sum(r.get("_meta", {}).get("cost_usd", 0) for r in analysis_results)
+        clean_results = [{k: v for k, v in r.items() if k != "_meta"} for r in analysis_results]
+
+        return AnalysisResponse(
+            ticker=ticker,
             total_filings=len(docs),
             results=clean_results,
             total_cost_usd=round(total_cost, 4),
             status="success"
         )
-        
-        logger.info(f"분석 완료: {req.ticker}, 결과: {len(clean_results)}개, 비용: ${total_cost:.4f}")
-        return response
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"분석 중 오류 발생: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"서버 오류: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health_check():
-    """서버 상태 확인"""
-    return {"status": "healthy", "message": "SEC 8-K 분석기가 정상 작동 중입니다."}
+    return {"status": "healthy"}
 
-@app.get("/cost-info")
-async def cost_info():
-    """비용 정보 제공"""
-    return {
-        "model": "gpt-4o-mini",
-        "input_cost_per_1k_tokens": "$0.00015",
-        "output_cost_per_1k_tokens": "$0.00060",
-        "estimated_cost_per_request": "$0.005-0.015",
-        "optimization": "청크 크기 최적화, 중요 섹션만 추출, 문서당 최대 3개 청크"
-    }
-    
-@app.post("/crawl-news", response_model=CrawlingResponse) 
+@app.post("/crawl-news", response_model=CrawlingResponse)
 async def crawl_stock_news(req: CrawlingRequest):
-    """
-    티커 목록을 받아 각 주식의 최신 뉴스 제목과 본문을 크롤링합니다.
-
-    - **tickers**: 크롤링할 주식 티커(심볼) 목록 (예: ["AAPL", "GOOGL"])
-    """
-    logger.info(f"크롤링 요청 수신: {req.tickers}")
-    
-    # 실제 크롤링 로직은 service 함수에 위임합니다.
     results = crawl_and_process_news(req.tickers)
-    
     if not results:
-        raise HTTPException(status_code=404, detail="요청된 모든 티커의 뉴스를 가져올 수 없습니다.")
-
-    logger.info(f"크롤링 요청 처리 완료.")
+        raise HTTPException(status_code=404, detail="뉴스를 가져올 수 없습니다.")
     return CrawlingResponse(crawl_results=results)
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/market/crawl_news", response_model=CrawlingResponse)
+async def crawl_market_crawl_news():
+    results = crawl_yahoo_stock_market_news()
+    print(results)
+    if not results:
+        raise HTTPException(status_code=404, detail="미국 증시 뉴스를 가져올 수 없습니다.")
+    
+    return CrawlingResponse(crawl_results=results)
