@@ -3,11 +3,13 @@
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 
+
 class CrawlingRequest(BaseModel):
     """
     뉴스 크롤링 요청을 위한 모델
     """
     tickers: List[str]
+
 
 class NewsArticle(BaseModel):
     """
@@ -16,8 +18,10 @@ class NewsArticle(BaseModel):
     newsTitle: str
     newsUri: str
     newsContent: str
-    newsDate: Optional[str] = None # str | None 과 동일
-    
+    newsDate: Optional[str] = None  # str | None 과 동일
+    newsImage: Optional[str] = None
+
+
 class CrawlingResponse(BaseModel):
     """
     크롤링 결과 응답을 위한 모델
