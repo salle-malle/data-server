@@ -16,11 +16,16 @@ logger = logging.getLogger(__name__)
 
 def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArticle]]:
     all_results: Dict[str, List[NewsArticle]] = {}
+    symbol_replacements = {
+        "BRK/B": "BRK-B",
+        "BRK.A": "BRK-A",
+    }
 
     for ticker_symbol in tickers:
         try:
             logger.info(f"'{ticker_symbol}' 뉴스 크롤링 시작...")
-            ticker = yf.Ticker(ticker_symbol)
+            yf_symbol = symbol_replacements.get(ticker_symbol, ticker_symbol)
+            ticker = yf.Ticker(yf_symbol)
             news_list = ticker.get_news()
 
             crawled_articles: List[NewsArticle] = []
