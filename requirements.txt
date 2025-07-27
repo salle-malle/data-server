@@ -1,16 +1,13 @@
 # 필수 기본 라이브러리
 pandas
 nltk
-beautifulsoup4
+beautifulsoup4>=4.12.0
 spacy
 tqdm
 openpyxl
 python-dotenv
 fastapi
 uvicorn
-
-# SEC 다운로드 관련
-sec-edgar-downloader
 
 # huggingface
 transformers
@@ -26,15 +23,16 @@ pydantic
 
 # 크롤링
 requests
-lxml[html_clean]
+lxml[html_clean]>=4.9.0
 newspaper3k
 yfinance
 
 # 추가 필요 패키지 (SEC 8-K 분석기용)
 html5lib>=1.1
-lxml_html_clean>=0.1.0
-charset-normalizer>=3.0.0
+chardet>=5.2.0
 
+# SEC 다운로드 관련
+sec-edgar-downloader
 
 #python -m venv venv
 #.\venv\Scripts\activate

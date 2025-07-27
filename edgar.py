@@ -5,9 +5,21 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from sec_edgar_downloader import Downloader
 
+import os
+import logging
+import time
+import chardet
+import gzip
+import re
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+from sec_edgar_downloader import Downloader
+
+
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def fetch_recent_8k_filings(
     ticker: str,
@@ -39,18 +51,47 @@ def fetch_recent_8k_filings(
         dl.get("8-K", ticker, after=start_date, before=end_date, include_amends=True)
         time.sleep(0.3)
 
-        # 다운로드된 모든 txt 파일 읽기
+        # 다운로드된 모든 txt 파일 읽기 - 강화된 파일 처리
         docs = []
         for root, _, files in os.walk(download_folder):
             for fname in files:
                 if fname.lower().endswith(".txt"):
                     file_path = os.path.join(root, fname)
                     try:
-                        with open(file_path, encoding="utf-8", errors="ignore") as f:
-                            content = f.read().strip()
+                        # bytes 모드로 읽기
+                        with open(file_path, "rb") as f:
+                            raw = f.read()
+                        
+                        # GZIP 압축 해제 (SEC 파일에 종종 포함됨)
+                        if raw[:2] == b"\x1f\x8b":
+                            try:
+                                raw = gzip.decompress(raw)
+                                logger.debug(f"GZIP 압축 해제: {fname}")
+                            except Exception as e:
+                                logger.warning(f"GZIP 압축 해제 실패 ({fname}): {e}")
+                        
+                        # 제어문자 제거 (ASCII 범위 외 문자)
+                        raw_clean = re.sub(rb"[^\x09\x0A\x0D\x20-\x7E]", b" ", raw)
+                        
+                        # 인코딩 감지 및 디코딩
+                        enc_info = chardet.detect(raw_clean)
+                        encoding = enc_info["encoding"] or "utf-8"
+                        confidence = enc_info.get("confidence", 0)
+                        
+                        logger.debug(f"파일 {fname}: 인코딩={encoding}, 신뢰도={confidence:.2f}")
+                        
+                        # 디코딩 (오류 허용)
+                        content = raw_clean.decode(encoding, errors="replace").strip()
+                        
+                        # 최소 길이 체크
                         if len(content) > 1000:
                             docs.append(content)
-                    except Exception:
+                            logger.debug(f"파일 로드 성공: {fname} ({len(content):,}자)")
+                        else:
+                            logger.debug(f"파일 너무 짧음, 스킵: {fname} ({len(content)}자)")
+                            
+                    except Exception as e:
+                        logger.warning(f"파일 읽기 실패 ({fname}): {e}")
                         continue
 
         logger.info(f"총 {len(docs)}개의 8-K 공시 로드 완료")
