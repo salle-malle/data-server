@@ -1,13 +1,6 @@
 import os
 import logging
 import time
-from datetime import datetime, timedelta
-from dotenv import load_dotenv
-from sec_edgar_downloader import Downloader
-
-import os
-import logging
-import time
 import chardet
 import gzip
 import re
@@ -15,11 +8,9 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from sec_edgar_downloader import Downloader
 
-
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 def fetch_recent_8k_filings(
     ticker: str,
@@ -51,7 +42,7 @@ def fetch_recent_8k_filings(
         dl.get("8-K", ticker, after=start_date, before=end_date, include_amends=True)
         time.sleep(0.3)
 
-        # 다운로드된 모든 txt 파일 읽기 - 강화된 파일 처리
+        # ★★★ 핵심: 안전한 파일 읽기 (인코딩/바이너리 문제 해결) ★★★
         docs = []
         for root, _, files in os.walk(download_folder):
             for fname in files:
@@ -80,7 +71,7 @@ def fetch_recent_8k_filings(
                         
                         logger.debug(f"파일 {fname}: 인코딩={encoding}, 신뢰도={confidence:.2f}")
                         
-                        # 디코딩 (오류 허용)
+                        # 안전한 디코딩 (오류 허용)
                         content = raw_clean.decode(encoding, errors="replace").strip()
                         
                         # 최소 길이 체크
