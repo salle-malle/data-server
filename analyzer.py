@@ -24,7 +24,7 @@ prompt = ChatPromptTemplate.from_template("""
 공시일: {filing_date}
 문서 내용: {full_content}
 
-다음 **완벽하게** JSON 형식으로 출력하세요:
+다음 JSON 형식으로 출력하세요:
 
 {{
   "title": "공시 핵심 내용을 반영한 구체적인 한국어 제목 (50자 이내)",
@@ -514,8 +514,8 @@ def analyze_8k(docs: list[str], max_cost: float = 8.0, default_date: str = None)
 
         # API 호출 전 딜레이
         if idx > 0:
-            logger.info("API Rate Limit 방지를 위해 3초 대기...")
-            time.sleep(3)  # 3초로 증가
+            logger.info("API Rate Limit 방지를 위해 8초 대기...")
+            time.sleep(8)  # 8초로 증가
 
         # 429 오류 재시도 로직
         max_retries = 5
