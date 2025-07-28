@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 def schedule_main_news_job():
     CRON_TIMEZONE = "Asia/Seoul"
     TARGET_HOUR = 5
-    TARGET_MINUTE =0
+    TARGET_MINUTE = 0
 
     def run_at_target_time():
         now = datetime.now(pytz.timezone(CRON_TIMEZONE))
@@ -57,14 +57,21 @@ def schedule_yahoo_stock_market_news():
                 news_content,
                 news_title,
                 news_uri,
-                news_date
+                news_date,
+                created_at,
+                updated_at
             ) VALUES (
-                %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s
             )
         """
 
+        # 한국 시간대 객체
+        KST = pytz.timezone("Asia/Seoul")
+
         for result_list in results.values():
             for result in result_list:
+                # news_date는 원래 기사 날짜, created_at/updated_at은 현재 한국 시간
+                now_kst = datetime.now(KST).replace(tzinfo=None)
                 execute_query(
                     insert_sql,
                     (
@@ -72,6 +79,8 @@ def schedule_yahoo_stock_market_news():
                         result.newsTitle,
                         result.newsUri,
                         str(result.newsDate),
+                        now_kst,
+                        now_kst,
                     )
                 )
 

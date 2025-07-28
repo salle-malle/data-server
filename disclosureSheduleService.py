@@ -11,6 +11,16 @@ from edgar import fetch_recent_8k_filings
 
 logger = logging.getLogger(__name__)
 
+# 한국 시간대 상수 정의
+KST = pytz.timezone("Asia/Seoul")
+
+def get_now_kst():
+    """항상 한국 시간(datetime) 반환"""
+    return datetime.now(KST)
+
+def get_today_kst():
+    """항상 한국 시간(date) 반환"""
+    return get_now_kst().date()
 
 def schedule_disclosure_job():
     """
@@ -22,7 +32,7 @@ def schedule_disclosure_job():
     TARGET_MINUTE = 30
 
     def run_at_target_time():
-        now = datetime.now(pytz.timezone(CRON_TIMEZONE))
+        now = get_now_kst()
         if now.hour == TARGET_HOUR and now.minute == TARGET_MINUTE:
             read_stock_list()
 
@@ -85,7 +95,8 @@ async def analyze_8k_job(ticker: str):
     """
     실제 8-K 공시 분석 및 DB 저장 비동기 작업
     """
-    today = datetime.now(pytz.timezone("Asia/Seoul")).date()
+    # 항상 한국 시간 기준으로 날짜 계산
+    today = get_today_kst()
     yesterday = today - timedelta(days=1)
 
     try:
@@ -111,10 +122,12 @@ async def analyze_8k_job(ticker: str):
 
         for result in clean_results:
             try:
+                # created_at, updated_at 모두 한국 시간 보장
+                now_kst = get_now_kst()
                 execute_query(insert_sql, (
                     yesterday,
-                    datetime.now(pytz.timezone("Asia/Seoul")),
-                    datetime.now(pytz.timezone("Asia/Seoul")),
+                    now_kst,
+                    now_kst,
                     result.get("narrative"),
                     result.get("title"),
                     ticker

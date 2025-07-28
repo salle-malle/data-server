@@ -12,6 +12,8 @@ from schemas import NewsArticle
 
 logger = logging.getLogger(__name__)
 
+def now_kst():
+    return datetime.now(ZoneInfo("Asia/Seoul"))
 
 async def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArticle]]:
     results: Dict[str, List[NewsArticle]] = {}
@@ -32,6 +34,7 @@ async def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArtic
                     continue
 
                 try:
+                    # pub_date를 UTC로 해석 후 KST로 변환
                     dt = datetime.fromtimestamp(pub_date, ZoneInfo("UTC")) if isinstance(pub_date, (int, float)) \
                         else datetime.fromisoformat(pub_date.replace('Z', '+00:00'))
                     date_kst = dt.astimezone(ZoneInfo("Asia/Seoul")).strftime('%Y-%m-%d %H:%M:%S')
@@ -40,12 +43,18 @@ async def crawl_and_process_news(tickers: List[str]) -> Dict[str, List[NewsArtic
                     article.download()
                     article.parse()
 
+                    # createAt, updateAt 모두 한국 시간으로 보장
+                    create_at = now_kst().strftime('%Y-%m-%d %H:%M:%S')
+                    update_at = create_at
+
                     articles.append(NewsArticle(
                         newsTitle=article.title,
                         newsUri=url,
                         newsContent=article.text,
                         newsDate=date_kst,
-                        newsImage=image or ""
+                        newsImage=image or "",
+                        createAt=create_at,
+                        updateAt=update_at
                     ))
                     logger.info(f"  - 성공: {article.title}")
                 except Exception as e:
