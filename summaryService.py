@@ -164,12 +164,41 @@ def summarize_and_save(content, stock, image_url):
         logging.error(f"member 조회 실패: {e}")
         holding_members = []
 
+    # investment_type_news_comment의 id를 가져오려면, comment 저장 시 insert 후 id를 받아야 합니다.
+    # execute_query가 insert 후 id를 반환한다고 가정하고 아래처럼 수정합니다.
+
+    comment_id_map = {}  # investment_type_id -> comment row id
+
+    for investment_type in investment_types:
+        comment = generate_commentary(summary_text, investment_type['investment_name'])
+        try:
+            comment_id = execute_query(
+                """
+                INSERT INTO investment_type_news_comment (
+                    summary_id,
+                    investment_id,
+                    investment_type_news_content,
+                    created_at,
+                    updated_at
+                ) VALUES (%s, %s, %s, %s, %s)
+                """,
+                (summary_id, investment_type['id'], comment, now_kst, now_kst)
+            )
+            saved_comments.append({
+                "investment_type_id": investment_type['id'],
+                "investment_type_news_content": comment
+            })
+            if comment_id:
+                comment_id_map[investment_type['id']] = comment_id
+        except Exception as e:
+            logging.error(f"investment_type_news_comment insert 실패: {e}")
+
     for member in holding_members:
         type_id = member.get('investment_type_id')
         if not type_id:
             continue
-        matched_comment = next((c for c in saved_comments if c["investment_type_id"] == type_id), None)
-        if not matched_comment:
+        comment_id = comment_id_map.get(type_id)
+        if not comment_id:
             continue
         try:
             # 한국 시간으로 현재 시간 생성
@@ -180,10 +209,10 @@ def summarize_and_save(content, stock, image_url):
                     created_at,
                     updated_at,
                     member_id,
-                    investment_type_news_comment
+                    investment_type_news_comment_id
                 ) VALUES (%s, %s, %s, %s)
                 """,
-                (now_kst, now_kst, member['id'], matched_comment["investment_type_news_content"])
+                (now_kst, now_kst, member['id'], comment_id)
             )
         except Exception as e:
             logging.error(f"member_stock_snapshot insert 실패: {e}")

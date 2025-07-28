@@ -1,4 +1,3 @@
-
 import schedule
 import threading
 import time
@@ -8,14 +7,26 @@ from datetime import datetime
 from summaryService import generate_summary_for_today_news
 
 def schedule_today_summary_job():
-    # 테스트용: 1분에 한 번씩 실행
+    KST = pytz.timezone("Asia/Seoul")
+
     def run_job():
         try:
             generate_summary_for_today_news()
         except Exception as e:
             logging.error(f"generate_summary_for_today_news 실행 에러: {e}")
 
-    schedule.every(1).minutes.do(run_job)
+    def schedule_kst_daily(hour, minute, job_func):
+        """
+        한국 시간 기준으로 매일 특정 시각에 job_func 실행
+        """
+        def wrapper():
+            now_utc = datetime.utcnow().replace(tzinfo=pytz.utc)
+            now_kst = now_utc.astimezone(KST)
+            if now_kst.hour == hour and now_kst.minute == minute:
+                job_func()
+        schedule.every(1).minutes.do(wrapper)
+
+    schedule_kst_daily(19, 55, run_job)
 
     def run_scheduler():
         while True:
