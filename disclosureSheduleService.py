@@ -98,7 +98,7 @@ async def analyze_8k_job(ticker: str):
     try:
         logger.info(f"📌 분석 시작 - ticker: {ticker}, 기간: {yesterday} ~ {yesterday}")
 
-        docs = fetch_recent_8k_filings(ticker, yesterday, yesterday)
+        docs = fetch_recent_8k_filings(ticker, yesterday, yesterday, status=True)
         logger.info(f"📄 {ticker} - 수집된 문서 수: {len(docs)}")
 
         if not docs:
