@@ -1,6 +1,3 @@
-import schedule
-import threading
-import time
 import logging
 import pytz
 import asyncio
@@ -24,32 +21,10 @@ def get_today_kst():
 
 def schedule_disclosure_job():
     """
-    FastAPI startup 이벤트에서 호출하여 스케줄러 작동 시작.
-    schedule.run_pending()을 별도 데몬 스레드에서 주기 실행.
+    프로그램이 시작될 때 단 한 번만 공시 스케줄 작업을 실행합니다.
     """
-    CRON_TIMEZONE = "Asia/Seoul"
-    TARGET_HOUR = 6
-    TARGET_MINUTE = 30
-
-    def run_at_target_time():
-        now = get_now_kst()
-        if now.hour == TARGET_HOUR and now.minute == TARGET_MINUTE:
-            read_stock_list()
-
-    schedule.every().minute.do(run_at_target_time)
-
-    def run_scheduler():
-        while True:
-            try:
-                schedule.run_pending()
-            except Exception as e:
-                logger.error(f"Schedule run_pending 에러: {e}")
-            time.sleep(1)
-
-    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
-    scheduler_thread.start()
-    logger.info("스케줄러 스레드 시작됨")
-
+    logger.info("프로그램 시작 시 8-K 공시 스케줄 작업 1회 실행")
+    read_stock_list()
 
 def run_async_func(coro):
     """
@@ -67,7 +42,6 @@ def run_async_func(coro):
         return asyncio.ensure_future(coro)
     else:
         return loop.run_until_complete(coro)
-
 
 def read_stock_list():
     """
@@ -89,7 +63,6 @@ def read_stock_list():
             run_async_func(analyze_8k_job(ticker))
         except Exception as e:
             logger.error(f"{ticker}에 대해 analyze_8k_job 실행 실패: {e}")
-
 
 async def analyze_8k_job(ticker: str):
     """

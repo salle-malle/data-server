@@ -55,7 +55,7 @@ def schedule_total_summary_job():
 
     # ✅ 원하는 시간 설정 (예: 23:24)
     # 24시는 존재하지 않으므로, 자정(00시 5분)에 실행하려면 0으로 설정해야 합니다.
-    schedule_kst_daily(1, 35, run_job)
+    schedule_kst_daily(6, 50, run_job)
     logger.info("⏰ 총평 요약 스케줄러 시작됨 (KST 기준 매일 23:24 실행)")
 
     while True:
