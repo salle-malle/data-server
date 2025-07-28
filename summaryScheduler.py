@@ -28,7 +28,7 @@ def schedule_today_summary_job():
 
     def wrapper():
         now_kst = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(KST)
-        target_hour, target_minute = 1, 0
+        target_hour, target_minute = 1, 8
 
         if now_kst.hour == target_hour and now_kst.minute == target_minute:
             # 마지막 실행이 60초 이내면 skip
