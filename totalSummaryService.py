@@ -57,7 +57,8 @@ def summarize_total(content: str) -> str:
             time.sleep(3)
 
 def generate_total_summary_for_all_members():
-    members = fetch_all("SELECT * FROM Member")
+    # 테이블명을 소문자로 변경 (MySQL 등에서 대소문자 구분 문제 방지)
+    members = fetch_all("SELECT * FROM member")
     today = date.today()
 
     for member in members:
