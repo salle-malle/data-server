@@ -15,8 +15,8 @@ KST = pytz.timezone("Asia/Seoul")
 
 def schedule_news_job():
     CRON_TIMEZONE = "Asia/Seoul"
-    TARGET_HOUR = 0
-    TARGET_MINUTE = 50
+    TARGET_HOUR = 1
+    TARGET_MINUTE = 0
 
     def run_at_target_time():
         now = datetime.now(pytz.timezone(CRON_TIMEZONE))
