@@ -27,3 +27,6 @@ class CrawlingResponse(BaseModel):
     크롤링 결과 응답을 위한 모델
     """
     crawl_results: Dict[str, List[NewsArticle]]
+
+
+    

@@ -9,10 +9,6 @@ python-dotenv
 fastapi
 uvicorn
 
-# huggingface
-transformers
-torch
-
 # LangChain
 langchain
 langchain-openai
@@ -33,6 +29,13 @@ chardet>=5.2.0
 
 # SEC 다운로드 관련
 sec-edgar-downloader
+
+pymysql==1.1.0
+schedule
+
+pytz
+croniter
+
 
 #python -m venv venv
 #.\venv\Scripts\activate
