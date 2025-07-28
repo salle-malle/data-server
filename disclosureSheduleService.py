@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from db import fetch_all, execute_query
 from analyzer import analyze_8k
 from edgar import fetch_recent_8k_filings
-from croniter import croniter
 
 logger = logging.getLogger(__name__)
 
@@ -18,20 +17,16 @@ def schedule_disclosure_job():
     FastAPI startup 이벤트에서 호출하여 스케줄러 작동 시작.
     schedule.run_pending()을 별도 데몬 스레드에서 주기 실행.
     """
-    CRON_EXPRESSION = "0 30 6 * * *"
     CRON_TIMEZONE = "Asia/Seoul"
+    TARGET_HOUR = 6
+    TARGET_MINUTE = 30
 
-    def run_at_cron():
+    def run_at_target_time():
         now = datetime.now(pytz.timezone(CRON_TIMEZONE))
-        base = now.replace(second=0, microsecond=0)
-        cron = croniter(CRON_EXPRESSION, base - timedelta(minutes=1))
-        next_run = cron.get_next(datetime)
-        if base == next_run:
-            logger.info("스케줄러 조건 일치: 6:30 - read_stock_list 실행")
+        if now.hour == TARGET_HOUR and now.minute == TARGET_MINUTE:
             read_stock_list()
 
-    schedule.every().minute.do(run_at_cron)
-    
+    schedule.every().minute.do(run_at_target_time)
 
     def run_scheduler():
         while True:
@@ -59,8 +54,6 @@ def run_async_func(coro):
         asyncio.set_event_loop(loop)
 
     if loop.is_running():
-        # FastAPI 환경에서는 이 분기가 항상 실행될 수 있음.
-        # ensure_future는 현재 스레드의 루프에만 안전함.
         return asyncio.ensure_future(coro)
     else:
         return loop.run_until_complete(coro)
