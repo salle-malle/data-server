@@ -4,16 +4,19 @@ import time
 import logging
 import pytz
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from db import fetch_all, execute_query
 from services import crawl_and_process_news
 
 logger = logging.getLogger(__name__)
 
+# 한국 시간대 객체 정의
+KST = pytz.timezone("Asia/Seoul")
+
 def schedule_news_job():
     CRON_TIMEZONE = "Asia/Seoul"
-    TARGET_HOUR = 7
-    TARGET_MINUTE = 0
+    TARGET_HOUR = 15
+    TARGET_MINUTE = 29
 
     def run_at_target_time():
         now = datetime.now(pytz.timezone(CRON_TIMEZONE))
@@ -80,9 +83,11 @@ async def crawl_news_job(ticker: str):
                 news_uri,
                 stock_id
             ) VALUES (
-                NOW(), NOW(), %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s
             )
         """
+        # 한국 시간으로 created_at, updated_at을 고정
+        now_kst = datetime.now(KST).replace(tzinfo=None)
         for ticker_key, articles in results.items():
             logger.info(f"티커: {ticker_key}, 기사 수: {len(articles)}")
             for idx, article in enumerate(articles, 1):
@@ -90,6 +95,8 @@ async def crawl_news_job(ticker: str):
                 execute_query(
                     insert_sql,
                     (
+                        now_kst,
+                        now_kst,
                         article.newsContent,
                         str(article.newsDate),
                         article.newsImage,
