@@ -95,9 +95,10 @@ def generate_commentary(summary_content, investment_type_name):
 # 하나의 종목에 대해 요약 및 저장 처리
 def summarize_and_save(content, stock, image_url):
     summary_text = summarize(content, stock['stock_name'])
+
+    now_kst = datetime.now(KST).replace(tzinfo=None)
+
     try:
-        # 한국 시간으로 현재 시간 생성
-        now_kst = datetime.now(KST).replace(tzinfo=None)
         insert_sql = """
             INSERT INTO summary (
                 created_at,
@@ -105,34 +106,32 @@ def summarize_and_save(content, stock, image_url):
                 news_content,
                 news_image,
                 stock_id
-            ) VALUES (
-                %s, %s, %s, %s, %s
-            )
+            ) VALUES (%s, %s, %s, %s, %s)
         """
-        
         summary_id = execute_query(insert_sql, (now_kst, now_kst, summary_text, image_url, stock['stock_id']))
-        
         if not summary_id:
             logging.error("❌ summary insert 후 id를 못받았음")
             return None
-        
     except Exception as e:
         logging.error(f"summary insert 실패: {e}")
         return None
 
-    # 투자 성향별 첨언 저장
+    # 투자 성향별 코멘트 생성 및 저장
     try:
         investment_types = fetch_all("SELECT * FROM investment_type")
-        logging.info(f"investment_type 쿼리 결과: {investment_types}")
+        logging.info(f"조회된 투자 성향 개수: {len(investment_types)}")
     except Exception as e:
-        logging.error(f"investment_type 조회 실패: {e}")
+        logging.error(f"투자 성향 조회 실패: {e}")
         investment_types = []
 
-    saved_comments = []
+    comment_id_map = {}
+
     for investment_type in investment_types:
-        comment = generate_commentary(summary_text, investment_type['investment_name'])
+        type_id = investment_type['id']
+        type_name = investment_type['investment_name']
         try:
-            execute_query(
+            comment = generate_commentary(summary_text, type_name)
+            comment_id = execute_query(
                 """
                 INSERT INTO investment_type_news_comment (
                     summary_id,
@@ -142,16 +141,15 @@ def summarize_and_save(content, stock, image_url):
                     updated_at
                 ) VALUES (%s, %s, %s, %s, %s)
                 """,
-                (summary_id, investment_type['id'], comment, now_kst, now_kst)
+                (summary_id, type_id, comment, now_kst, now_kst)
             )
-            saved_comments.append({
-                "investment_type_id": investment_type['id'],
-                "investment_type_news_content": comment
-            })
+            if comment_id:
+                comment_id_map[type_id] = comment_id
+            time.sleep(3)  # 👉 코멘트 요청 간 딜레이 (rate limit 회피)
         except Exception as e:
-            logging.error(f"investment_type_news_comment insert 실패: {e}")
+            logging.error(f"코멘트 저장 실패 (성향: {type_name}): {e}")
 
-    # 종목 보유 회원 조회 및 스냅샷 저장
+    # 해당 종목을 보유한 회원 조회
     try:
         holding_members = fetch_all("""
             SELECT m.*, it.id AS investment_type_id
@@ -160,35 +158,38 @@ def summarize_and_save(content, stock, image_url):
             LEFT JOIN investment_type it ON m.investment_type_id = it.id
             WHERE ms.stock_id = %s
         """, (stock['stock_id'],))
+        logging.info(f"보유 회원 수: {len(holding_members)}")
     except Exception as e:
-        logging.error(f"member 조회 실패: {e}")
+        logging.error(f"보유 회원 조회 실패: {e}")
         holding_members = []
 
+    # 스냅샷 저장
     for member in holding_members:
         type_id = member.get('investment_type_id')
         if not type_id:
             continue
-        matched_comment = next((c for c in saved_comments if c["investment_type_id"] == type_id), None)
-        if not matched_comment:
+
+        comment_id = comment_id_map.get(type_id)
+        if not comment_id:
             continue
+
         try:
-            # 한국 시간으로 현재 시간 생성
-            now_kst = datetime.now(KST).replace(tzinfo=None)
             execute_query(
                 """
                 INSERT INTO member_stock_snapshot (
                     created_at,
                     updated_at,
                     member_id,
-                    investment_type_news_comment
+                    investment_type_news_comment_id
                 ) VALUES (%s, %s, %s, %s)
                 """,
-                (now_kst, now_kst, member['id'], matched_comment["investment_type_news_content"])
+                (now_kst, now_kst, member['id'], comment_id)
             )
         except Exception as e:
-            logging.error(f"member_stock_snapshot insert 실패: {e}")
+            logging.error(f"스냅샷 저장 실패 (회원 ID: {member['id']}): {e}")
 
     return summary_text
+
 
 def generate_summary_for_today_news():
     try:

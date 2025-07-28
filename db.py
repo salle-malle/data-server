@@ -26,7 +26,7 @@ def fetch_all(query, params=None):
 
 def execute_query(query, params=None, fetch=False):
     conn = get_connection()
-    cursor = conn.cursor(pymysql.cursors.DictCursor)  # ✅ DictCursor 적용됨
+    cursor = conn.cursor(pymysql.cursors.DictCursor)
 
     try:
         cursor.execute(query, params or ())
