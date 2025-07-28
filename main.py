@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from newsSheduleService import schedule_news_job
 from mainNewsCheduleService import schedule_main_news_job
 from summaryScheduler import schedule_today_summary_job
-# from totalSummarySchedule import schedule_total_summary_job
+from totalSummarySchedule import schedule_total_summary_job
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     schedule_news_job()
     schedule_main_news_job()
     schedule_today_summary_job()
-    # schedule_total_summary_job()
+    schedule_total_summary_job()
     yield
 
 
