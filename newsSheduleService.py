@@ -1,5 +1,3 @@
-# 이렇게 해도 되지? job 잘 돌아가겠징
-
 import schedule
 import threading
 import time
