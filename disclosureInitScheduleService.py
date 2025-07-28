@@ -22,14 +22,14 @@ def get_today_kst():
     """항상 한국 시간(date) 반환"""
     return get_now_kst().date()
 
-def schedule_disclosure_job():
+def schedule_disclosure_init_job():
     """
     FastAPI startup 이벤트에서 호출하여 스케줄러 작동 시작.
     schedule.run_pending()을 별도 데몬 스레드에서 주기 실행.
     """
     CRON_TIMEZONE = "Asia/Seoul"
     TARGET_HOUR = 3
-    TARGET_MINUTE = 5 
+    TARGET_MINUTE = 0
 
     def run_at_target_time():
         now = get_now_kst()
@@ -97,12 +97,11 @@ async def analyze_8k_job(ticker: str):
     """
     # 항상 한국 시간 기준으로 날짜 계산
     today = get_today_kst()
-    # yesterday = today - timedelta(days=1)
     start_date = today - timedelta(days=365)
     end_date = today - timedelta(days=2)
 
     try:
-        # logger.info(f"📌 분석 시작 - ticker: {ticker}, 기간: {yesterday} ~ {yesterday}")
+        logger.info(f"📌 분석 시작 - ticker: {ticker}, 기간: {start_date} ~ {end_date}")
 
         docs = fetch_recent_8k_filings(ticker, start_date, end_date, status=False)
         logger.info(f"📄 {ticker} - 수집된 문서 수: {len(docs)}")
@@ -126,6 +125,7 @@ async def analyze_8k_job(ticker: str):
             try:
                 # created_at, updated_at 모두 한국 시간 보장
                 now_kst = get_now_kst()
+                # disclosure_date는 result에서 가져오거나, end_date로 저장(여기서는 end_date 사용)
                 execute_query(insert_sql, (
                     end_date,
                     now_kst,
